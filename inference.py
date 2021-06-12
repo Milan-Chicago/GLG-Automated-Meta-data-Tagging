@@ -27,7 +27,26 @@ class BERT_NER_inference(object):
 
         return tokenizer
 
-    def predict(self, text_input, tag_values):
+    def predict(self, text_input):
+
+        tag_values = ['B-org',
+                      'B-tim',
+                      'B-nat',
+                      'B-eve',
+                      'I-eve',
+                      'B-per',
+                      'I-tim',
+                      'B-gpe',
+                      'I-geo',
+                      'B-art',
+                      'I-gpe',
+                      'I-nat',
+                      'O',
+                      'I-org',
+                      'I-art',
+                      'I-per',
+                      'B-geo',
+                      'PAD']
 
         self.model.eval()
         tokenized_input = self.tokenizer.encode(text_input)
@@ -47,40 +66,17 @@ class BERT_NER_inference(object):
                 new_tokens.append(token)
 
         return {
-            "named_entities": new_labels
+            "tokens": repr(new_tokens),
+            "named_entities": repr(new_labels)
         }
 
 
+inference = BERT_NER_inference()
 
-if __name__ == "__main__":
+def get_model():
+    return inference
 
-    tag_values = ['B-org',
-                  'B-tim',
-                  'B-nat',
-                  'B-eve',
-                  'I-eve',
-                  'B-per',
-                  'I-tim',
-                  'B-gpe',
-                  'I-geo',
-                  'B-art',
-                  'I-gpe',
-                  'I-nat',
-                  'O',
-                  'I-org',
-                  'I-art',
-                  'I-per',
-                  'B-geo',
-                  'PAD']
 
-    text_input = """
-Divy’s tweets began just moments after a International Atomic Agency diatribe by this randome Mike dude, a 
-reporter for the network, about pangolins in Germany on Wednesday afternoon in June and elsewhere. 
-"""
-
-    inference = BERT_NER_inference()
-    named_entities = inference.predict(text_input, tag_values)
-    print(named_entities)
 
 
 
