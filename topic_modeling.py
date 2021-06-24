@@ -45,7 +45,7 @@ def get_top_topic_index(text,
                         ):
     list_of_lemmas = get_list_of_lemmas(text)
 
-    # load first level topic dictionary
+    # load topic dictionary
     with open(params['LDA_dictionary_path'], 'rb') as f:
         # The protocol version used is detected automatically, so we do not
         # have to specify it.
@@ -62,9 +62,9 @@ def get_top_topic_index(text,
     topic_number, proba = sorted(vector, key=lambda item: item[1])[-1]
 
     if proba < 0.2:
-        return -1
+        return -1, -1
     else:
-        return topic_number
+        return topic_number, proba
 
 ################  Train LDA model ####################
 
@@ -278,12 +278,14 @@ def train_model(model_type="LDA-KeyWords",
             'Top topic indexes are selected. NOTE "-1" corresponds to top topic with probability < 20%')
     return df_data
 
+################  Name extracted topics ####################
+
 
 def name_topic(df, words_column):
     # print(df.shape)
     words_to_count = list(df[words_column])
     words_to_count = [w.replace("_", " ").lower()
-                      for l in words_to_count for w in l]
+                      for l in words_to_count for w in l if len(w) > 1]
     words_to_count = [w[0].upper() + w[1:] for w in words_to_count]
     # print(words_to_count[:5])
 
@@ -299,8 +301,77 @@ def get_topic_names(df_result, topic_column, words_column):
         #print (topic)
         df_topic = df_result[df_result[topic_column] == topic].copy()
         #print(topic, df_topic.shape)
-        df_topic[topic_column] = df_topic[topic_column].apply(str) + " " +\
-            name_topic(df_topic, words_column)
+        df_topic[topic_column + "_name"] = name_topic(df_topic, words_column)
         list_dfs.append(df_topic)
 
-    return pd.concat(list_dfs)
+    df_res = pd.concat(list_dfs)
+
+    return df_res[topic_column + "_name"]
+
+################  Process unseen text ####################
+
+
+def predict_topics(text,
+                   params={"topics_df_path": './output/lda/topics.pickle',
+                           "first_dictionary_path": "./output/lda/dictionary1.pickle",
+                           "first_LDA_model_path": "./output/lda/LDA_model1"
+                           }
+                   ):
+
+    # load pre-trained topics
+    LDA_topics_df_path = params["topics_df_path"]
+    with open(LDA_topics_df_path, 'rb') as f:
+        # The protocol version used is detected automatically, so we do not
+        # have to specify it.
+        df_topics = pickle.load(f)
+    df_topics.head(1)
+
+    # first level
+    first_LDA_dict_path = params["first_dictionary_path"]
+    first_LDA_model_path = params["first_LDA_model_path"]
+    t1, t1_proba = get_top_topic_index(text,
+                                       params={"LDA_dictionary_path": first_LDA_dict_path,
+                                               "LDA_model_path": first_LDA_model_path
+                                               }
+                                       )
+
+    # second level
+    second_LDA_dict_path = first_LDA_dict_path[:-
+                                               7] + "_" + str(t1 + 1) + ".pickle"
+    second_LDA_model_path = first_LDA_model_path + "_" + str(t1 + 1)
+    t2, t2_proba = get_top_topic_index(text,
+                                       params={"LDA_dictionary_path": second_LDA_dict_path,
+                                               "LDA_model_path": second_LDA_model_path
+                                               }
+                                       )
+
+    # third level
+    third_LDA_dict_path = first_LDA_dict_path[:-7] + \
+        "_" + str(t1 + 1) + "_" + str(t2 + 1) + ".pickle"
+    third_LDA_model_path = first_LDA_model_path + \
+        "_" + str(t1 + 1) + "_" + str(t2 + 1)
+    t3, t3_proba = get_top_topic_index(text,
+                                       params={"LDA_dictionary_path": third_LDA_dict_path,
+                                               "LDA_model_path": third_LDA_model_path
+                                               }
+                                       )
+
+    # get topic names
+    t1_name = df_topics[df_topics['first_level_topic']
+                        == t1]['first_level_topic_name'].iloc[0]
+    t2_name = df_topics[df_topics['second_level_topic'] == str(t1) +
+                        '.' + str(t2)]['second_level_topic_name'].iloc[0]
+    t3_name = df_topics[df_topics['third_level_topic'] == str(t1) +
+                        '.' + str(t2) + '.' + str(t3)]['third_level_topic_name'].iloc[0]
+
+    dict_output = {'first_level_topic': t1,
+                   'first_level_topic_name': t1_name,
+                   'first_level_topic_proba': t1_proba,
+                   'second_level_topic': t2,
+                   'second_level_topic_name': t2_name,
+                   'second_level_topic_proba': t2_proba,
+                   'third_level_topic': t3,
+                   'third_level_topic_name': t3_name,
+                   'third_level_topic_proba': t3_proba
+                   }
+    return dict_output
