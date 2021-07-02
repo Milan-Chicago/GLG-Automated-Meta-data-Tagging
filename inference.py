@@ -8,7 +8,7 @@ from transformers import (
 
 class BERT_NER_inference(object):
 
-    def __init__(self, model_path: str = "./pretrained_models/ner_state_dict_3.bin"):
+    def __init__(self, model_path: str = "./pretrained_models/bert_ner_model.bin"):
 
         self.device = torch.device("cpu") # load model onto CPU for inference
         self.tokenizer = self.get_tokenizer()
@@ -20,6 +20,7 @@ class BERT_NER_inference(object):
                         output_hidden_states=False
                     )
         self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.tag_values = checkpoint["tag_values"]
 
     def get_tokenizer(self):
 
@@ -28,25 +29,6 @@ class BERT_NER_inference(object):
         return tokenizer
 
     def predict(self, text_input):
-
-        tag_values = ['B-org',
-                      'B-tim',
-                      'B-nat',
-                      'B-eve',
-                      'I-eve',
-                      'B-per',
-                      'I-tim',
-                      'B-gpe',
-                      'I-geo',
-                      'B-art',
-                      'I-gpe',
-                      'I-nat',
-                      'O',
-                      'I-org',
-                      'I-art',
-                      'I-per',
-                      'B-geo',
-                      'PAD']
 
         self.model.eval()
         tokenized_input = self.tokenizer.encode(text_input)
@@ -62,12 +44,20 @@ class BERT_NER_inference(object):
             if token.startswith("##"):
                 new_tokens[-1] = new_tokens[-1] + token[2:]
             else:
-                new_labels.append(tag_values[label_idx])
+                new_labels.append(self.tag_values[label_idx])
                 new_tokens.append(token)
 
+        # just extract the named entities:
+        # TODO: probably a more efficient way to do this but this is enough for now
+
+        extracted_named_entites = []
+        for entity in zip(new_tokens, new_labels):
+            if entity[1] != "O":
+                extracted_named_entites.append(entity)
+
+
         return {
-            "tokens": repr(new_tokens),
-            "named_entities": repr(new_labels)
+            "extracted_entities": repr(extracted_named_entites)
         }
 
 
@@ -75,6 +65,8 @@ inference = BERT_NER_inference()
 
 def get_model():
     return inference
+
+print(inference.predict("Divy Murli lives in Boise, Idaho and went to college at UCSB."))
 
 
 
