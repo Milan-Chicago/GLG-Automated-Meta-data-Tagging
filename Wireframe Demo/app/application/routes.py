@@ -29,9 +29,9 @@ def process_text():
       nar_dict = af.get_all_named_entities(text, nar_model_path)
 
       topics_dict = af.predict_topics(text,
-                                      params={"topics_df_path": os.path.join(basedir, 'lda_models/lda/topics.pickle'),
-                                              "first_dictionary_path": os.path.join(basedir, "lda_models/lda/dictionary1.pickle"),
-                                              "first_LDA_model_path": os.path.join(basedir, "lda_models/lda/LDA_model1")
+                                      params={"topics_df_path": os.path.join(basedir, 'lda_models/lda_keywords/topics.pickle'),
+                                              "first_dictionary_path": os.path.join(basedir, "lda_models/lda_keywords/dictionary1.pickle"),
+                                              "first_LDA_model_path": os.path.join(basedir, "lda_models/lda_keywords/LDA_model1")
                                               }
                                       )
 
