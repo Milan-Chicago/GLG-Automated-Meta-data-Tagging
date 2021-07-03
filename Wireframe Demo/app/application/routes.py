@@ -25,14 +25,8 @@ def process_text():
       text = form.text.data
 
       # process text
-      # ner_model = af.BERT_NER_inference(
-      #     os.path.join(basedir, 'ner_models/bert_ner_model.bin'))
-      # ner_output = ner_model.predict(text)
-
-      ner_output = [("Place", "Chicago"),
-                    ("Name", "Michael Jordan"),
-                    ("Group", "National Basketball Association")
-                    ]
+      nar_model_path = os.path.join(basedir, 'ner_models/bert_ner_model.bin')
+      nar_dict = af.get_all_named_entities(text, nar_model_path)
 
       topics_dict = af.predict_topics(text,
                                       params={"topics_df_path": os.path.join(basedir, 'lda_models/lda/topics.pickle'),
@@ -48,7 +42,7 @@ def process_text():
                 "topic_2_proba": round(topics_dict['second_level_topic_proba'] * 100, 2),
                 "topic_3": topics_dict['third_level_topic_name'],
                 "topic_3_proba": round(topics_dict['third_level_topic_proba'] * 100, 2),
-                "key_words": ner_output
+                "key_words": nar_dict
                 }
 
       return render_template('text_processed_output.html', output=output)
