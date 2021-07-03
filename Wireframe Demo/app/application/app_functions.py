@@ -8,6 +8,7 @@ import pandas as pd
 import collections
 import numpy as np
 from typing import Dict
+from sklearn.metrics.pairwise import cosine_similarity
 
 import spacy
 nlp = spacy.load("en_core_web_sm")
@@ -19,6 +20,10 @@ from transformers import (
     BertTokenizer
 )
 
+import tensorflow_hub as hub
+# Load the Universal Sentence Encoder's TF Hub module
+module_url = "https://tfhub.dev/google/universal-sentence-encoder-large/5"
+hub_model = hub.load(module_url)
 
 ################  Topics for new texts using pretrained model ####################
 
@@ -57,11 +62,15 @@ def get_list_of_lemmas(text):
 
 
 def get_top_topic_index(text,
-                        params={"LDA_dictionary_path": "./output/lda/dictionary1.pickle",
-                                "LDA_model_path": "./output/lda/LDA_model1"
+                        params={"LDA_dictionary_path": "./output/lda_keywords/dictionary1.pickle",
+                                "LDA_model_path": "./output/lda_keywords/LDA_model1"
                                 }
                         ):
-  list_of_lemmas = get_list_of_lemmas(text)
+
+  if "lda_keywords" in params['LDA_model_path']:
+    list_of_words = text.split(" ")
+  else:
+    list_of_words = get_list_of_lemmas(text)
 
   # load topic dictionary
   with open(params['LDA_dictionary_path'], 'rb') as f:
@@ -69,7 +78,7 @@ def get_top_topic_index(text,
     # have to specify it.
     dictionary = pickle.load(f)
 
-  doc2bow = dictionary.doc2bow(list_of_lemmas)
+  doc2bow = dictionary.doc2bow(list_of_words)
 
   # load topic model
   lda = get_LDA_model(params['LDA_model_path'])
@@ -328,22 +337,130 @@ def get_topic_names(df_result, topic_column, words_column):
   return df_res[topic_column + "_name"]
 
 ################  Process unseen text ####################
+# clean noun phrases from stop-words
+
+
+def clean_NPs(np):
+  tmp_no_stop_words = [w for w in np if w.is_stop == False]
+
+  # make only last word as lemma
+  if len(tmp_no_stop_words) > 0:
+    tmp_lemmas = [w.text for w in tmp_no_stop_words[:-1]] + \
+        [tmp_no_stop_words[-1].lemma_]
+  else:
+    tmp_lemmas = []
+
+  tmp_atleast_one_alpha = [
+      w for w in tmp_lemmas if len(re.sub(r"\d|\W", "", w)) > 0]
+  tmp_result = [w.lower() for w in tmp_atleast_one_alpha if len(w) > 0]
+
+  return " ".join(tmp_result)
+
+
+def get_NPs_Vs(text):
+  doc = nlp(text)
+
+  # extract noun phrases
+  NPs = [np for np in doc.noun_chunks]
+
+  # delete stop-words ("the", "a", "your" etc.) and clean NPs
+  NPs = [clean_NPs(np) for np in NPs]
+  NPs = [np for np in NPs if len(np) > 1]
+
+  # extract verd lemmas
+  Vs = [word.text for word in doc if (word.is_stop == False) &
+        (len(word.text) > 2) &
+        (word.is_alpha) &
+        (word.pos_ in ['VERB'])]
+  return NPs + Vs
+
+
+def get_embeddings(list_of_words):
+  return hub_model(list_of_words)
+
+
+def get_word_embeddings(df_data, column="word", N_batches=1):
+  # split data into N batches
+  N = N_batches
+
+  part = int(len(df_data) / N)
+  print(N, "batches with", part + 1, column + "s each")
+
+  # get embeddings for each N words
+  index = 0
+  batch_num = 0
+  list_dfs = []
+
+  while index < len(df_data):
+    df_tmp = df_data.iloc[index: index + part].copy()
+    df_tmp = df_tmp.reset_index(drop=True)
+    print("Batch number:", batch_num + 1, "out of ", N, "index:", index)
+
+    df_batch_embeddings = pd.DataFrame(
+        get_embeddings(list(df_tmp[column])).numpy())
+
+    num_embeddings = df_batch_embeddings.shape[1]
+    columns = ["emb_" + str(i) for i in range(512)]
+    df_tmp[columns] = df_batch_embeddings
+
+    list_dfs.append(df_tmp)
+    batch_num = batch_num + 1
+    index = index + part
+
+  # concatinate batches into single dataset
+  df_emb = pd.concat(list_dfs)
+
+  return df_emb
+
+
+def get_keyword(row, df_emb):
+  take_cluster_name = row['take_cluster_name']
+  sim_max_index = row['sim_max_index']
+
+  if take_cluster_name:
+    return df_emb['cluster_label'].iloc[sim_max_index]
+  else:
+    return ""
 
 
 def predict_topics(text,
-                   params={"topics_df_path": './output/lda/topics.pickle',
+                   params={"topics_df_path": './output/lda_keywords/topics.pickle',
+                           "word_embeddings": './output/lda_keywords/word_embeddings.pickle',
                            "first_dictionary_path": "./output/lda/dictionary1.pickle",
                            "first_LDA_model_path": "./output/lda/LDA_model1"
                            }
                    ):
 
+  if 'lda_keywords' in params["topics_df_path"]:
+    # get clustered words' embedings and cluster names(key words) from train corpus
+    with open(params["word_embeddings"], 'rb') as f:
+      df_emb = pickle.load(f)
+
+    # extract keywords from text
+    NPs_and_Vs = get_NPs_Vs(text)
+    df_text_words = pd.DataFrame(NPs_and_Vs, columns=['text_words'])
+    df_text_emb = get_word_embeddings(
+        df_text_words, column="text_words", N_batches=1)
+
+    # find closest word in train corpus and get cluster name
+    columns = ["emb_" + str(i) for i in range(512)]
+    sim_values = cosine_similarity(df_text_emb[columns], df_emb[columns])
+    max_sim_values = np.max(sim_values, axis=1)
+    df_text_words['take_cluster_name'] = max_sim_values >= 0.7
+    df_text_words['sim_max_index'] = np.argmax(sim_values, axis=1)
+    df_text_words['keyword'] = df_text_words.apply(
+        get_keyword, axis=1, args=[df_emb])
+
+    words_for_LDA = list(df_text_words['keyword'])
+    words_for_LDA = [w for w in words_for_LDA if len(w) > 0]
+
+    text = " ".join(words_for_LDA)
+
   # load pre-trained topics
   LDA_topics_df_path = params["topics_df_path"]
   with open(LDA_topics_df_path, 'rb') as f:
-    # The protocol version used is detected automatically, so we do not
-    # have to specify it.
     df_topics = pickle.load(f)
-  df_topics.head(1)
+  # df_topics.head(1)
 
   # first level
   first_LDA_dict_path = params["first_dictionary_path"]
@@ -376,12 +493,22 @@ def predict_topics(text,
                                      )
 
   # get topic names
-  t1_name = df_topics[df_topics['first_level_topic']
-                      == t1]['first_level_topic_name'].iloc[0]
-  t2_name = df_topics[df_topics['second_level_topic'] == str(t1) +
-                      '.' + str(t2)]['second_level_topic_name'].iloc[0]
-  t3_name = df_topics[df_topics['third_level_topic'] == str(t1) +
-                      '.' + str(t2) + '.' + str(t3)]['third_level_topic_name'].iloc[0]
+  if t1 == -1:
+    t1_name = "misc."
+  else:
+    t1_name = df_topics[df_topics['first_level_topic']
+                        == t1]['first_level_topic_name'].iloc[0]
+
+  if t2 == -1:
+    t2_name = "misc."
+  else:
+    t2_name = df_topics[df_topics['second_level_topic'] == str(t1) +
+                        '.' + str(t2)]['second_level_topic_name'].iloc[0]
+  if t3 == -1:
+    t3_name = "misc."
+  else:
+    t3_name = df_topics[df_topics['third_level_topic'] == str(t1) +
+                        '.' + str(t2) + '.' + str(t3)]['third_level_topic_name'].iloc[0]
 
   dict_output = {'first_level_topic': t1,
                  'first_level_topic_name': t1_name,
@@ -395,7 +522,7 @@ def predict_topics(text,
                  }
   return dict_output
 
-  ################  NER using pretrained model ####################
+################  NER using pretrained model ####################
 
 
 class BERT_NER_inference(object):
