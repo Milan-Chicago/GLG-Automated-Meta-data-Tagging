@@ -34,8 +34,10 @@
             <td style="width: 60%;">
                 <ul>
                     {% for kw in output.key_words %}
-                        <li><b>{{ kw[0] }}:</b>&ensp;{{ kw[1] }}
-                        </li>
+                        <li><b>{{ kw }}:</b></li>
+                        {% for entity in output.key_words[kw] %}
+                            &ensp;&ensp;{{ entity }}<br>
+                        {% endfor %}
                     {% endfor %}
                 </ul>
             </td>
