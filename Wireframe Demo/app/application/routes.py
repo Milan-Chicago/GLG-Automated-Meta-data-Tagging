@@ -25,13 +25,18 @@ def process_text():
       text = form.text.data
 
       # process text
-      nar_model_path = os.path.join(basedir, 'ner_models/bert_ner_model.bin')
-      nar_dict = af.get_all_named_entities(text, nar_model_path)
+      model_path = os.path.join(basedir, 'ner_models/bert_ner_model.bin')
+      ner_output = af.get_all_named_entities(text, model_path)
+
+      # ner_output = {"Names": ["Michael Jordan"],
+      #               "Places": ["Chicago"],
+      #               "Organisations": ["National Basketball Association"]
+      #               }
 
       topics_dict = af.predict_topics(text,
-                                      params={"topics_df_path": os.path.join(basedir, 'lda_models/lda_keywords/topics.pickle'),
-                                              "first_dictionary_path": os.path.join(basedir, "lda_models/lda_keywords/dictionary1.pickle"),
-                                              "first_LDA_model_path": os.path.join(basedir, "lda_models/lda_keywords/LDA_model1")
+                                      params={"topics_df_path": os.path.join(basedir, 'lda_models/lda/topics.pickle'),
+                                              "first_dictionary_path": os.path.join(basedir, "lda_models/lda/dictionary1.pickle"),
+                                              "first_LDA_model_path": os.path.join(basedir, "lda_models/lda/LDA_model1")
                                               }
                                       )
 
@@ -42,7 +47,7 @@ def process_text():
                 "topic_2_proba": round(topics_dict['second_level_topic_proba'] * 100, 2),
                 "topic_3": topics_dict['third_level_topic_name'],
                 "topic_3_proba": round(topics_dict['third_level_topic_proba'] * 100, 2),
-                "key_words": nar_dict
+                "key_words": ner_output
                 }
 
       return render_template('text_processed_output.html', output=output)
