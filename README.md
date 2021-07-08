@@ -3,7 +3,7 @@ Named Entity recognition, Hierarchical topic modeling
 ![image](https://user-images.githubusercontent.com/7217067/115755705-3f0f7700-a363-11eb-86a2-588f802f7fa9.png)
 
 
-1.    Background and Significance of Project
+# 1.    Background and Significance of Project
 
 
 GLG powers great decisions through our network of experts. GLG receives hundreds of requests a day from clients seeking insights on topics ranging from the airline industry’s ability to cope with COVID-19 to the zebra mussel infestations in North America. GLG’s goal is to match each request to a topic specialist in their database. This project is a Natural Language Processing (NLP) challenge aimed at improving the topic/keyword detection process from the client submitted reports and identifying the underlying patterns in submitted requests over time.  The primary challenges include Named Entity Recognition (NER) and Pattern Recognition for Hierarchical Clustering of Topics.
@@ -12,7 +12,7 @@ Typically, the client requests we receive comprise a form with unstructured free
 
 GitHub: https://github.com/Milan-Chicago/GLG-Automated-Meta-data-Tagging/tree/main (switch to branch ‘drm’ for NER code)
 
-2.    Related Work (Papers, github)
+# 2.    Related Work (Papers, github)
 
 
 Topic modeling:
@@ -31,7 +31,8 @@ Named Entity Recognition:
 spaCy NER (for baselining): https://spacy.io/models/en. Precision/recall of baseline en_core_web_sm is ~ 0.86
 Finetuning BERT for NER (next level): https://www.depends-on-the-definition.com/named-entity-recognition-with-bert/, https://github.com/chambliss/Multilingual_NER. Fine tuning a BERT model on the NER task gives a validation accuracy of ~0.95 after just one epoch of fine tuning. We plan to add code for computing precision/recall on individual named entities. 
 A next step is to try DistilBERT, which is a lighter weight BERT model (and hence probably faster in deployment): https://arxiv.org/abs/1910.01108. Another lightweight transformer model is MobileBERT: https://arxiv.org/abs/2004.02984. 
-3.    Explanation of Data sets
+
+# 3.    Explanation of Data sets
 
 There will be two kinds of data sets for this project:
 
@@ -41,7 +42,7 @@ https://components.one/datasets/all-the-news-2-news-articles-dataset/
 https://www.kaggle.com/abhinavwalia95/entity-annotated-corpus
 Annotated Corpus for Named Entity Recognition using GMB(Groningen Meaning Bank) corpus for entity classification with enhanced and popular features by Natural Language Processing applied to the data set. This particular dataset has 47959 sentences and 35178 unique words. 
 
-4.    Explanation of Processes (Methods)
+# 4.    Explanation of Processes (Methods)
 
 Main model chosen for the topic modeling is Latent Dirichlet Allocation (LDA). This model is a form of unsupervised learning that views documents as bags of words (i.e. order does not matter). LDA works by first making a key assumption: the way a document was generated was by picking a set of topics and then for each topic picking a set of words.
 
@@ -121,7 +122,7 @@ Try to fine tune a lighter weight transformer model such as distilbert and/or mo
 
 With regards to the second bullet point above, using a distilbert or mobilebert model will be more suited to large scale production models, due to their smaller size (and hence quicker latency).
 
-5.    Explanation of Outcomes 
+# 5.    Explanation of Outcomes 
 
 Hierarchical topic modeling:
 
@@ -167,7 +168,7 @@ Token level precision-recall for the model we trained for NER are outlined below
 
 While pretrained spaCy models work great out of the box, what is nice about using transformers is (a) their ease in customization and (b) their ease in evaluation. We see above that our model performs best on location-based tokens, and comparatively worse on organization-based tokens.
 
-6.    System Design and Ethical Considerations
+# 6.    System Design and Ethical Considerations
 
 Given we are using public news and healthcare data sources, the intended outcome is a summary or LDA modeling of the proposed text.  Future use cases could potentially involve use of more PII or Medical data use cases.
 Need to be aware of cultural biases that arise by country.   
