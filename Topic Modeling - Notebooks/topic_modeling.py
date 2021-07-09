@@ -7,23 +7,18 @@ import pickle
 import pandas as pd
 import collections
 import numpy as np
-from typing import Dict
 from sklearn.metrics.pairwise import cosine_similarity
 
 import spacy
-nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("en_core_web_md")
+
 
 import torch
-from pydantic import BaseModel
 from transformers import (
     BertForTokenClassification,
     BertTokenizer
 )
 
-import tensorflow_hub as hub
-# Load the Universal Sentence Encoder's TF Hub module
-module_url = "https://tfhub.dev/google/universal-sentence-encoder-large/5"
-hub_model = hub.load(module_url)
 
 ################  Topics for new texts using pretrained model ####################
 
@@ -309,38 +304,64 @@ def train_model(model_type="LDA-KeyWords",
 ################  Name extracted topics ####################
 
 
-def name_topic(df, words_column):
+def name_topic(df, words_column, topic_words):
     # print(df.shape)
     words_to_count = list(df[words_column])
-    words_to_count = [w.replace("_", " ").lower()
-                      for l in words_to_count for w in l if len(w) > 1]
-    words_to_count = [w[0].upper() + w[1:] for w in words_to_count]
-    # print(words_to_count[:5])
+    words_to_count = [w for l in words_to_count for w in l if len(w) > 1]
+    #print(len(words_to_count), topic_words)
+    words_to_count = [w for w in words_to_count if w in topic_words]
+    if len(words_to_count) > 0:
+        try:
+            words_to_count = [w.replace("_", " ").lower()
+                              for w in words_to_count]
+            words_to_count = [w[0].upper() + w[1:] for w in words_to_count]
+            # print(words_to_count[:5])
 
-    c = collections.Counter(words_to_count)
-    # print(c)
-    return c.most_common(3)[0][0]
+            c = collections.Counter(words_to_count)
+            return c.most_common(3)[0][0]
+        except:
+            print(c)
+    else:
+        return "ERROR"
 
 
-def get_topic_names(df_result, topic_column, words_column):
+def get_topic_names(df_result, topic_column, words_column,
+                    LDA_model_path, num_topics, num_words=20):
     list_dfs = []
     all_topics = list(set(df_result[topic_column]))
-    for topic in all_topics:
-        #print (topic)
-        df_topic = df_result[df_result[topic_column] == topic].copy()
-        #print(topic, df_topic.shape)
-        df_topic[topic_column + "_name"] = name_topic(df_topic, words_column)
-        list_dfs.append(df_topic)
+    topic_words_dict = get_dict_topic_words(
+        LDA_model_path, num_topics, num_words=20)
 
-    df_res = pd.concat(list_dfs)
+    try:
+        for topic in all_topics:
+            #print (topic)
+            df_topic = df_result[df_result[topic_column] == topic].copy()
+            #print(topic, df_topic.shape)
+            topic_words = topic_words_dict[int(str(topic)[-1])]
+            df_topic[topic_column +
+                     "_name"] = name_topic(df_topic, words_column, topic_words)
+            list_dfs.append(df_topic)
 
-    return df_res[topic_column + "_name"]
+        df_res = pd.concat(list_dfs)
 
+        return df_res[topic_column + "_name"]
+    except:
+        print(topic_words_dict)
+
+
+def get_dict_topic_words(LDA_model_path, num_topics, num_words=20):
+    # get top num_words words that appear both in topic  and in text list_of_words
+    lda = get_LDA_model(LDA_model_path)
+    x = lda.show_topics(num_topics=num_topics,
+                        num_words=num_words, formatted=False)
+    topic_words = [(tp[0], [wd[0] for wd in tp[1]]) for tp in x]
+
+    return dict(topic_words)
 ################  Process unseen text ####################
-# clean noun phrases from stop-words
 
 
 def clean_NPs(np):
+    # clean noun phrases from stop-words
     tmp_no_stop_words = [w for w in np if w.is_stop == False]
 
     # make only last word as lemma
@@ -376,41 +397,20 @@ def get_NPs_Vs(text):
 
 
 def get_embeddings(list_of_words):
-    return hub_model(list_of_words)
+    embeddings = [nlp(w).vector for w in list_of_words]
+    return np.appay(embeddings)
 
 
-def get_word_embeddings(df_data, column="word", N_batches=1):
-    # split data into N batches
-    N = N_batches
+def get_word_embeddings(df_data, column="word"):
+    df_tmp = df_data
+    df_tmp['emb_vector'] = df_tmp[column].apply(lambda w: nlp(w).vector)
+    w_vectors = np.array(list(df_tmp['emb_vector']))
 
-    part = int(len(df_data) / N)
-    print(N, "batches with", part + 1, column + "s each")
+    columns = ["emb_" + str(i) for i in range(300)]
+    df_data[columns] = w_vectors
+    del df_data['emb_vector']
 
-    # get embeddings for each N words
-    index = 0
-    batch_num = 0
-    list_dfs = []
-
-    while index < len(df_data):
-        df_tmp = df_data.iloc[index: index + part].copy()
-        df_tmp = df_tmp.reset_index(drop=True)
-        print("Batch number:", batch_num + 1, "out of ", N, "index:", index)
-
-        df_batch_embeddings = pd.DataFrame(
-            get_embeddings(list(df_tmp[column])).numpy())
-
-        num_embeddings = df_batch_embeddings.shape[1]
-        columns = ["emb_" + str(i) for i in range(512)]
-        df_tmp[columns] = df_batch_embeddings
-
-        list_dfs.append(df_tmp)
-        batch_num = batch_num + 1
-        index = index + part
-
-    # concatinate batches into single dataset
-    df_emb = pd.concat(list_dfs)
-
-    return df_emb
+    return df_data
 
 
 def get_keyword(row, df_emb):
@@ -440,10 +440,10 @@ def predict_topics(text,
         NPs_and_Vs = get_NPs_Vs(text)
         df_text_words = pd.DataFrame(NPs_and_Vs, columns=['text_words'])
         df_text_emb = get_word_embeddings(
-            df_text_words, column="text_words", N_batches=1)
+            df_text_words, column="text_words")
 
         # find closest word in train corpus and get cluster name
-        columns = ["emb_" + str(i) for i in range(512)]
+        columns = ["emb_" + str(i) for i in range(300)]
         sim_values = cosine_similarity(df_text_emb[columns], df_emb[columns])
         max_sim_values = np.max(sim_values, axis=1)
         df_text_words['take_cluster_name'] = max_sim_values >= 0.7
